@@ -2,6 +2,8 @@ package ru.xmn.myapplication;
 
 import android.animation.Animator;
 import android.animation.ValueAnimator;
+import android.support.annotation.NonNull;
+import android.support.v4.view.animation.FastOutSlowInInterpolator;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.support.v7.widget.LinearLayoutManager;
@@ -16,7 +18,7 @@ import android.widget.Button;
 public class MainActivity extends AppCompatActivity {
     private int itemCount = 5;
     private RecyclerView rv;
-    private int recyclerViewLastHeight;
+    private ViewTreeObserver.OnPreDrawListener listener;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -75,60 +77,29 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) {
                 rv.measure(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT);
                 rv.requestLayout();
-//                rv.invalidate();
             }
         });
+        listener = getOnPreDrawListener();
     }
 
-    private void animateRecyclerView() {
-        rv.getViewTreeObserver().addOnPreDrawListener(new ViewTreeObserver.OnPreDrawListener() {
+    @NonNull
+    private ViewTreeObserver.OnPreDrawListener getOnPreDrawListener() {
+        return new ViewTreeObserver.OnPreDrawListener() {
+            private int finalHeight;
+            private ValueAnimator animator;
             int mFrames = 0;
+            private int recyclerViewLastHeight;
 
             @Override
             public boolean onPreDraw() {
                 switch (mFrames++) {
                     case 0:
                         recyclerViewLastHeight = rv.getHeight();
-                        rv.measure(RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT);
-                        rv.requestLayout();
-                        rv.invalidate();
-                        int height = rv.getMeasuredHeight();
+                        finalHeight = new RecyclerViewMeasureHelper().getMeasuredHeightCustom(rv, RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT);
 
-                        ValueAnimator animator = ValueAnimator
-                                .ofInt(recyclerViewLastHeight, height)
-                                .setDuration(300);
-                        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-                            @Override
-                            public void onAnimationUpdate(ValueAnimator animation) {
+                        animate(finalHeight);
 
-                                rv.getLayoutParams().height = (int) animation.getAnimatedValue();
-                                rv.requestLayout();
-                            }
-                        });
-                        animator.addListener(new Animator.AnimatorListener() {
-                            @Override
-                            public void onAnimationStart(Animator animation) {
-
-                            }
-
-                            @Override
-                            public void onAnimationEnd(Animator animation) {
-                                mFrames = 0;
-                            }
-
-                            @Override
-                            public void onAnimationCancel(Animator animation) {
-
-                            }
-
-                            @Override
-                            public void onAnimationRepeat(Animator animation) {
-
-                            }
-                        });
-                        animator.start();
-
-                        recyclerViewLastHeight = height;
+                        recyclerViewLastHeight = finalHeight;
 
                         return true;
                     case 1:
@@ -137,6 +108,53 @@ public class MainActivity extends AppCompatActivity {
                 rv.getViewTreeObserver().removeOnPreDrawListener(this);
                 return true;
             }
-        });
+
+            private void animate(int height) {
+                if (animator == null) {
+                    animator = ValueAnimator
+                            .ofInt(rv.getHeight(), height)
+                            .setDuration(300);
+                    animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                        @Override
+                        public void onAnimationUpdate(ValueAnimator animation) {
+                            rv.getLayoutParams().height = (int) animation.getAnimatedValue();
+                            rv.requestLayout();
+                        }
+                    });
+                    animator.addListener(new Animator.AnimatorListener() {
+                        @Override
+                        public void onAnimationStart(Animator animation) {
+
+                        }
+
+                        @Override
+                        public void onAnimationEnd(Animator animation) {
+                            mFrames = 0;
+                            animator = null;
+                            if (recyclerViewLastHeight != rv.getHeight()) {
+                                finalHeight = new RecyclerViewMeasureHelper().getMeasuredHeightCustom(rv, RecyclerView.LayoutParams.MATCH_PARENT, RecyclerView.LayoutParams.WRAP_CONTENT);
+                                animate(finalHeight);
+                            }
+                        }
+
+                        @Override
+                        public void onAnimationCancel(Animator animation) {
+
+                        }
+
+                        @Override
+                        public void onAnimationRepeat(Animator animation) {
+
+                        }
+                    });
+                    animator.setInterpolator(new FastOutSlowInInterpolator());
+                    animator.start();
+                }
+            }
+        };
+    }
+
+    private void animateRecyclerView() {
+        rv.getViewTreeObserver().addOnPreDrawListener(listener);
     }
 }
